@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dollar Empire Alpha</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            background-color: #1a1a1a;
+            color: gold;
+            margin: 0;
+            padding: 20px;
+        }
+        #balance {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        #coin {
+            width: 150px;
+            height: 150px;
+            background-color: gold;
+            border-radius: 50%;
+            margin: 20px auto;
+            cursor: pointer;
+            line-height: 150px;
+            font-size: 20px;
+            user-select: none;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+        }
+        .upgrade, .business {
+            background-color: #333;
+            color: white;
+            border: none;
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #businesses {
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div id="balance">$: <span id="money">0</span></div>
+
+    <div id="coin" onclick="clickCoin()">КЛИКАЙ!</div>
+
+    <button class="upgrade" onclick="buyUpgrade()">Улучшить монету (Ур.<span id="coinLevel">1</span>) | Стоит: $<span id="upgradeCost">10</span></button>
+
+    <div id="businesses">
+        <h3>Бизнес:</h3>
+        <button class="business" onclick="collectBusinessIncome()">
+            Лимонный киоск (<span id="businessCount">0</span>)<br>
+            Доход: $<span id="businessIncome">0</span>
+        </button>
+        <button class="business" onclick="buyBusiness()">Купить киоск ($<span id="businessCost">15</span>)</button>
+    </div>
+
+    <script>
+        // Игровые переменные
+        let money = 0;
+        let coinLevel = 1;
+        let upgradeCost = 10;
+
+        let businessCount = 0;
+        let businessIncome = 0;
+        let businessCost = 15;
+
+        // Инициализация Telegram Web App
+        let tg = window.Telegram.WebApp;
+        tg.expand(); // Разворачиваем приложение на весь экран
+        tg.BackButton.hide(); // Пока что скрываем кнопку "Назад"
+
+        // Загрузка сохранения (пока из localStorage)
+        function loadGame() {
+            const save = JSON.parse(localStorage.getItem('dollarEmpireSave'));
+            if (save) {
+                money = save.money || 0;
+                coinLevel = save.coinLevel || 1;
+                upgradeCost = save.upgradeCost || 10;
+                businessCount = save.businessCount || 0;
+                businessIncome = save.businessIncome || 0;
+                businessCost = save.businessCost || 15;
+            }
+            updateUI();
+        }
+
+        // Сохранение игры
+        function saveGame() {
+            const save = {
+                money,
+                coinLevel,
+                upgradeCost,
+                businessCount,
+                businessIncome,
+                businessCost
+            };
+            localStorage.setItem('dollarEmpireSave', JSON.stringify(save));
+        }
+
+        // Обновление интерфейса
+        function updateUI() {
+            document.getElementById('money').textContent = money.toFixed(2);
+            document.getElementById('coinLevel').textContent = coinLevel;
+            document.getElementById('upgradeCost').textContent = upgradeCost;
+            document.getElementById('businessCount').textContent = businessCount;
+            document.getElementById('businessIncome').textContent = businessIncome.toFixed(2);
+            document.getElementById('businessCost').textContent = businessCost;
+        }
+
+        // Клик по монете
+        function clickCoin() {
+            money += coinLevel;
+            updateUI();
+            saveGame();
+        }
+
+        // Покупка улучшения монеты
+        function buyUpgrade() {
+            if (money >= upgradeCost) {
+                money -= upgradeCost;
+                coinLevel += 1;
+                upgradeCost = Math.round(upgradeCost * 2.5); // Увеличиваем стоимость для следующего уровня
+                updateUI();
+                saveGame();
+            } else {
+                alert("Недостаточно денег!");
+            }
+        }
+
+        // Покупка бизнеса
+        function buyBusiness() {
+            if (money >= businessCost) {
+                money -= businessCost;
+                businessCount += 1;
+                businessIncome = businessCount * 0.1; // Каждый киоск приносит $0.1
+                businessCost = Math.round(businessCost * 1.8); // Увеличиваем стоимость следующего киоска
+                updateUI();
+                saveGame();
+            } else {
+                alert("Недостаточно денег!");
+            }
+        }
+
+        // Сбор дохода с бизнеса (пока вручную)
+        function collectBusinessIncome() {
+            money += businessIncome;
+            updateUI();
+            saveGame();
+        }
+
+        // Авто-сбор дохода (будет полезно для следующих версий)
+        // setInterval(collectBusinessIncome, 1000); // Пока не используем
+
+        // Запускаем игру
+        loadGame();
+    </script>
+</body>
+</html>
