@@ -124,6 +124,10 @@
             margin: 8px 0;
             border-radius: 10px;
             cursor: pointer;
+            border: none;
+            color: var(--text-color);
+            text-align: left;
+            width: 100%;
         }
         .business-item:disabled, .upgrade-item:disabled, .manager-item:disabled, .boost-item:disabled {
             opacity: 0.6;
@@ -239,6 +243,10 @@
         @keyframes fadeInOut {
             0%, 100% { opacity: 0; transform: translate(-50%, -20px); }
             10%, 90% { opacity: 1; transform: translate(-50%, 0); }
+        }
+        #business-list, #upgrades-list, #managers-list, #boosts-list, #achievements-list {
+            max-height: 55vh;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -422,7 +430,7 @@
                 updateBoosts();
                 updateAchievements();
                 updateStats();
-                gameState.playTime += 1/3600; // +1 секунда в часах
+                gameState.playTime += 1/3600;
                 updateUI();
             }, 1000);
 
@@ -434,8 +442,6 @@
             const deltaTime = (now - gameState.lastUpdateTime) / 1000;
             gameState.lastUpdateTime = now;
 
-            let totalIncomePerSecond = 0;
-
             gameState.businesses.forEach(business => {
                 if (business.level > 0) {
                     let income = business.income * gameState.boostMultiplier;
@@ -446,7 +452,6 @@
 
                     const incomeThisFrame = income * deltaTime;
                     business.accumulatedIncome += incomeThisFrame;
-                    totalIncomePerSecond += income;
                 }
             });
 
@@ -470,6 +475,44 @@
                     }
                 }
             });
+        }
+
+        function updateAchievements() {
+            gameState.achievements.forEach((achievement, index) => {
+                if (!achievement.completed) {
+                    let progress = 0;
+                    switch(achievement.id) {
+                        case "first_million":
+                            progress = gameState.totalEarned;
+                            break;
+                        case "click_master":
+                            progress = gameState.totalClicks;
+                            break;
+                        case "business_tycoon":
+                            progress = gameState.totalBusinesses;
+                            break;
+                        case "manager_pro":
+                            progress = gameState.managers.filter(m => m.owned).length;
+                            break;
+                    }
+                    
+                    achievement.progress = Math.min(progress, achievement.goal);
+                    if (achievement.progress >= achievement.goal) {
+                        achievement.completed = true;
+                        showNotification(`Достижение: ${achievement.name}!`);
+                    }
+                }
+            });
+        }
+
+        function updateStats() {
+            document.getElementById('stat-total-earned').textContent = Math.floor(gameState.totalEarned).toLocaleString();
+            document.getElementById('stat-total-clicks').textContent = gameState.totalClicks.toLocaleString();
+            document.getElementById('stat-total-businesses').textContent = gameState.totalBusinesses;
+            document.getElementById('stat-total-managers').textContent = gameState.managers.filter(m => m.owned).length;
+            document.getElementById('stat-play-time').textContent = gameState.playTime.toFixed(1);
+            document.getElementById('stat-achievements').textContent = 
+                `${gameState.achievements.filter(a => a.completed).length}/${gameState.achievements.length}`;
         }
 
         // ОСНОВНЫЕ ДЕЙСТВИЯ
@@ -527,6 +570,18 @@
             if (!manager.owned && gameState.money >= manager.cost) {
                 gameState.money -= manager.cost;
                 manager.owned = true;
+                
+                // Автоматический сбор для этого бизнеса
+                const business = gameState.businesses[manager.businessIndex];
+                setInterval(() => {
+                    if (business.accumulatedIncome > 0) {
+                        gameState.money += business.accumulatedIncome;
+                        gameState.totalEarned += business.accumulatedIncome;
+                        business.accumulatedIncome = 0;
+                        updateUI();
+                    }
+                }, 1000);
+                
                 updateUI();
                 renderManager(index);
             }
@@ -557,7 +612,8 @@
 
         function claimChannelBonus() {
             if (!gameState.channelBonusClaimed) {
-                tg.openTelegramLink('https://t.me/your_channel');
+                // ЗАМЕНИ НА СВОЙ РЕАЛЬНЫЙ КАНАЛ!
+                tg.openTelegramLink('https://t.me/hammer_head_channel');
                 gameState.money += 100;
                 gameState.channelBonusClaimed = true;
                 showNotification('+100$ за подписку!');
@@ -623,8 +679,276 @@
             }
         }
 
-        // ... (остальные функции рендеринга и логики)
+        // РЕНДЕР ИНТЕРФЕЙСА
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
 
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            document.querySelector(`button[onclick="switchTab('${tabName}')"]`).classList.add('active');
+        }
+
+        function renderAllSections() {
+            renderBusinesses();
+            renderUpgrades();
+            renderManagers();
+            renderBoosts();
+            renderAchievements();
+        }
+
+        function renderBusinesses() {
+            const container = document.getElementById('business-list');
+            container.innerHTML = '';
+            
+            gameState.businesses.forEach((business, index) => {
+                const bizElement = document.createElement('button');
+                bizElement.className = 'business-item';
+                bizElement.onclick = () => buyBusiness(index);
+                bizElement.innerHTML = `
+                    <div class="business-header">
+                        <span class="business-name">${business.icon} ${business.name}</span>
+                        <span class="business-income">+$${business.income.toFixed(1)}/сек</span>
+                    </div>
+                    <div class="business-header">
+                        <span class="business-level">Уровень: ${business.level}</span>
+                        <span class="business-cost">$${business.cost}</span>
+                    </div>
+                    ${business.accumulatedIncome > 0 ? 
+                        `<div class="business-accumulated">Накоплено: $${business.accumulatedIncome.toFixed(1)}</div>` : ''
+                    }
+                `;
+                bizElement.disabled = gameState.money < business.cost;
+                container.appendChild(bizElement);
+            });
+        }
+
+        function renderBusiness(index) {
+            const business = gameState.businesses[index];
+            const buttons = document.querySelectorAll('.business-item');
+            if (buttons[index]) {
+                buttons[index].innerHTML = `
+                    <div class="business-header">
+                        <span class="business-name">${business.icon} ${business.name}</span>
+                        <span class="business-income">+$${business.income.toFixed(1)}/сек</span>
+                    </div>
+                    <div class="business-header">
+                        <span class="business-level">Уровень: ${business.level}</span>
+                        <span class="business-cost">$${business.cost}</span>
+                    </div>
+                    ${business.accumulatedIncome > 0 ? 
+                        `<div class="business-accumulated">Накоплено: $${business.accumulatedIncome.toFixed(1)}</div>` : ''
+                    }
+                `;
+                buttons[index].disabled = gameState.money < business.cost;
+            }
+        }
+
+        function renderUpgrades() {
+            const container = document.getElementById('upgrades-list');
+            const nextCost = Math.floor(10 * Math.pow(gameState.coinsPerClick, 1.5));
+            
+            container.innerHTML = `
+                <button class="upgrade-item" onclick="buyUpgrade()">
+                    <div class="upgrade-header">
+                        <span class="upgrade-name">💎 Улучшение монеты</span>
+                        <span class="upgrade-cost">$${nextCost}</span>
+                    </div>
+                    <div>+1$ за клик (Уровень ${gameState.coinsPerClick})</div>
+                </button>
+            `;
+        }
+
+        function renderManagers() {
+            const container = document.getElementById('managers-list');
+            container.innerHTML = '';
+            
+            gameState.managers.forEach((manager, index) => {
+                const business = gameState.businesses[manager.businessIndex];
+                const managerElement = document.createElement('button');
+                managerElement.className = 'manager-item';
+                managerElement.onclick = () => hireManager(index);
+                managerElement.innerHTML = `
+                    <div class="manager-header">
+                        <span class="manager-name">👔 ${manager.name}</span>
+                        <span class="manager-cost">$${manager.cost}</span>
+                    </div>
+                    <div>${manager.description}</div>
+                    ${manager.owned ? '<div class="manager-owned">✔ Нанят</div>' : ''}
+                `;
+                managerElement.disabled = manager.owned || gameState.money < manager.cost;
+                container.appendChild(managerElement);
+            });
+        }
+
+        function renderManager(index) {
+            const manager = gameState.managers[index];
+            const buttons = document.querySelectorAll('.manager-item');
+            if (buttons[index]) {
+                buttons[index].innerHTML = `
+                    <div class="manager-header">
+                        <span class="manager-name">👔 ${manager.name}</span>
+                        <span class="manager-cost">$${manager.cost}</span>
+                    </div>
+                    <div>${manager.description}</div>
+                    ${manager.owned ? '<div class="manager-owned">✔ Нанят</div>' : ''}
+                `;
+                buttons[index].disabled = manager.owned || gameState.money < manager.cost;
+            }
+        }
+
+        function renderBoosts() {
+            const container = document.getElementById('boosts-list');
+            container.innerHTML = '';
+            
+            gameState.boosts.forEach((boost, index) => {
+                const boostElement = document.createElement('button');
+                boostElement.className = 'boost-item';
+                boostElement.onclick = () => activateBoost(index);
+                boostElement.innerHTML = `
+                    <div class="boost-header">
+                        <span class="boost-name">⚡ ${boost.name}</span>
+                        <span class="boost-cost">$${boost.cost}</span>
+                    </div>
+                    <div>${boost.description}</div>
+                    ${boost.active ? `<div class="boost-timer">⏰ ${boost.timeLeft}сек</div>` : ''}
+                `;
+                boostElement.disabled = boost.active || gameState.money < boost.cost;
+                container.appendChild(boostElement);
+            });
+        }
+
+        function renderBoost(index) {
+            const boost = gameState.boosts[index];
+            const buttons = document.querySelectorAll('.boost-item');
+            if (buttons[index]) {
+                buttons[index].innerHTML = `
+                    <div class="boost-header">
+                        <span class="boost-name">⚡ ${boost.name}</span>
+                        <span class="boost-cost">$${boost.cost}</span>
+                    </div>
+                    <div>${boost.description}</div>
+                    ${boost.active ? `<div class="boost-timer">⏰ ${boost.timeLeft}сек</div>` : ''}
+                `;
+                buttons[index].disabled = boost.active || gameState.money < boost.cost;
+            }
+        }
+
+        function renderAchievements() {
+            const container = document.getElementById('achievements-list');
+            container.innerHTML = '';
+            
+            gameState.achievements.forEach((achievement, index) => {
+                const progressPercent = (achievement.progress / achievement.goal) * 100;
+                const achievementElement = document.createElement('button');
+                achievementElement.className = 'achievement-item';
+                achievementElement.onclick = () => claimAchievement(index);
+                achievementElement.innerHTML = `
+                    <div class="achievement-header">
+                        <span class="achievement-name">🏆 ${achievement.name}</span>
+                        ${achievement.claimed ? '<span style="color:#4caf50">✔</span>' : 
+                          achievement.completed ? '<span style="color:#ff9800">🎁</span>' : ''}
+                    </div>
+                    <div class="achievement-description">${achievement.description}</div>
+                    <div class="achievement-progress">
+                        <div class="achievement-progress-bar" style="width: ${progressPercent}%"></div>
+                    </div>
+                    <div>Прогресс: ${achievement.progress}/${achievement.goal}</div>
+                    ${achievement.completed && !achievement.claimed ? 
+                        '<div style="color: #ff9800; margin-top: 5px;">Награда: $' + achievement.reward + '</div>' : ''}
+                    ${achievement.claimed ? '<div style="color: #4caf50; margin-top: 5px;">✔ Награда получена</div>' : ''}
+                `;
+                achievementElement.disabled = !achievement.completed || achievement.claimed;
+                container.appendChild(achievementElement);
+            });
+        }
+
+        function renderAchievement(index) {
+            const achievement = gameState.achievements[index];
+            const buttons = document.querySelectorAll('.achievement-item');
+            if (buttons[index]) {
+                const progressPercent = (achievement.progress / achievement.goal) * 100;
+                buttons[index].innerHTML = `
+                    <div class="achievement-header">
+                        <span class="achievement-name">🏆 ${achievement.name}</span>
+                        ${achievement.claimed ? '<span style="color:#4caf50">✔</span>' : 
+                          achievement.completed ? '<span style="color:#ff9800">🎁</span>' : ''}
+                    </div>
+                    <div class="achievement-description">${achievement.description}</div>
+                    <div class="achievement-progress">
+                        <div class="achievement-progress-bar" style="width: ${progressPercent}%"></div>
+                    </div>
+                    <div>Прогресс: ${achievement.progress}/${achievement.goal}</div>
+                    ${achievement.completed && !achievement.claimed ? 
+                        '<div style="color: #ff9800; margin-top: 5px;">Награда: $' + achievement.reward + '</div>' : ''}
+                    ${achievement.claimed ? '<div style="color: #4caf50; margin-top: 5px;">✔ Награда получена</div>' : ''}
+                `;
+                buttons[index].disabled = !achievement.completed || achievement.claimed;
+            }
+        }
+
+        function updateUI() {
+            const totalIncome = gameState.businesses.reduce((total, biz) => total + biz.income, 0) * gameState.boostMultiplier;
+            document.getElementById('balance').textContent = `$${gameState.money.toFixed(2)}`;
+            document.getElementById('income-per-sec').textContent = `+$${totalIncome.toFixed(1)}/сек`;
+            document.getElementById('coins-per-click').textContent = gameState.coinsPerClick;
+
+            renderAllSections();
+        }
+
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 2000);
+        }
+
+        // СОХРАНЕНИЕ И ЗАГРУЗКА
+        function saveGame() {
+            gameState.lastSaveTime = Date.now();
+            gameState.lastUpdateTime = Date.now();
+            localStorage.setItem('dollarEmpireSave', JSON.stringify(gameState));
+        }
+
+        function loadGame() {
+            try {
+                const save = JSON.parse(localStorage.getItem('dollarEmpireSave'));
+                if (save) {
+                    Object.assign(gameState, save);
+                    gameState.lastUpdateTime = Date.now();
+                }
+            } catch (error) {
+                console.log('Нет сохраненной игры, начинаем новую');
+            }
+        }
+
+        function calculateOfflineEarnings() {
+            const save = JSON.parse(localStorage.getItem('dollarEmpireSave'));
+            if (save && save.lastUpdateTime) {
+                const offlineTime = (Date.now() - save.lastUpdateTime) / 1000;
+                
+                if (offlineTime > 10) {
+                    let totalOfflineIncome = 0;
+                    save.businesses.forEach(business => {
+                        if (business.level > 0) {
+                            totalOfflineIncome += business.income * offlineTime;
+                        }
+                    });
+
+                    if (totalOfflineIncome > 0) {
+                        gameState.money += totalOfflineIncome;
+                        gameState.totalEarned += totalOfflineIncome;
+                        showNotification(`За время отсутствия: +$${totalOfflineIncome.toFixed(2)}!`);
+                    }
+                }
+            }
+        }
+
+        // ЗАПУСК
+        window.onload = initGame;
     </script>
 </body>
 </html>
