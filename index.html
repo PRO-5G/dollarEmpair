@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dollar Empire Alpha 0.3</title>
+    <title>Dollar Empire Alpha 0.4</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         :root {
@@ -17,6 +17,7 @@
             --boost-color: #ff9800;
             --manager-color: #2196f3;
             --achievement-color: #9c27b0;
+            --car-color: #ff5722;
         }
         body {
             font-family: 'Roboto', Arial, sans-serif;
@@ -60,19 +61,19 @@
             background-color: var(--panel-color);
             border-radius: 12px;
             margin-bottom: 10px;
-            overflow: hidden;
-            flex-wrap: wrap;
+            overflow-x: auto;
+            flex-wrap: nowrap;
         }
         .tab-button {
-            flex: 1;
-            padding: 12px;
+            padding: 12px 15px;
             background: none;
             border: none;
             color: var(--text-color);
             cursor: pointer;
             text-align: center;
             font-weight: 500;
-            min-width: 60px;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         .tab-button.active {
             background-color: var(--tab-active);
@@ -108,9 +109,23 @@
             font-weight: bold;
             box-shadow: 0 0 30px rgba(255, 215, 0, 0.6);
             transition: transform 0.1s;
+            position: relative;
         }
         #coin:active {
             transform: scale(0.92);
+        }
+        .coin-particle {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: gold;
+            border-radius: 50%;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+        }
+        @keyframes floatUp {
+            0% { transform: translate(0, 0); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
         }
         #version {
             text-align: center;
@@ -118,7 +133,7 @@
             font-size: 0.8em;
             margin-top: 5px;
         }
-        .business-item, .upgrade-item, .manager-item, .boost-item, .achievement-item {
+        .business-item, .upgrade-item, .manager-item, .boost-item, .achievement-item, .car-item {
             background-color: var(--button-color);
             padding: 15px;
             margin: 8px 0;
@@ -128,18 +143,23 @@
             color: var(--text-color);
             text-align: left;
             width: 100%;
+            transition: transform 0.2s;
         }
-        .business-item:disabled, .upgrade-item:disabled, .manager-item:disabled, .boost-item:disabled {
+        .business-item:hover, .upgrade-item:hover, .manager-item:hover, .boost-item:hover, .achievement-item:hover, .car-item:hover {
+            transform: translateY(-2px);
+        }
+        .business-item:disabled, .upgrade-item:disabled, .manager-item:disabled, .boost-item:disabled, .car-item:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+            transform: none;
         }
-        .business-header, .upgrade-header, .manager-header, .boost-header, .achievement-header {
+        .business-header, .upgrade-header, .manager-header, .boost-header, .achievement-header, .car-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 5px;
         }
-        .business-name, .upgrade-name, .manager-name, .boost-name, .achievement-name {
+        .business-name, .upgrade-name, .manager-name, .boost-name, .achievement-name, .car-name {
             font-weight: bold;
             font-size: 1.1em;
         }
@@ -147,11 +167,11 @@
             color: #4caf50;
             font-weight: bold;
         }
-        .business-cost, .upgrade-cost, .manager-cost, .boost-cost {
+        .business-cost, .upgrade-cost, .manager-cost, .boost-cost, .car-cost {
             color: #f44336;
             font-weight: bold;
         }
-        .business-level, .upgrade-level {
+        .business-level, .upgrade-level, .car-speed {
             color: #bb86fc;
             font-size: 0.9em;
         }
@@ -184,7 +204,33 @@
             height: 100%;
             transition: width 0.3s;
         }
-        #leaderboard-list {
+        .car-owned {
+            color: var(--car-color);
+            font-weight: bold;
+        }
+        .car-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 0.9em;
+        }
+        .car-stat {
+            color: #bbb;
+        }
+        #garage-view {
+            text-align: center;
+            padding: 20px;
+        }
+        #current-car {
+            font-size: 2em;
+            margin: 20px 0;
+        }
+        #car-name {
+            font-size: 1.5em;
+            color: var(--car-color);
+            margin: 10px 0;
+        }
+        #leaderboard-list, #cars-list {
             max-height: 50vh;
             overflow-y: auto;
         }
@@ -248,6 +294,18 @@
             max-height: 55vh;
             overflow-y: auto;
         }
+        .combo-meter {
+            height: 5px;
+            background: #333;
+            border-radius: 3px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .combo-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff0000, #ffff00, #00ff00);
+            transition: width 0.3s;
+        }
     </style>
 </head>
 <body>
@@ -255,8 +313,13 @@
         <div>
             <div id="balance">$0.00</div>
             <div id="income-per-sec">+$0.0/сек</div>
+            <div id="combo-text" style="font-size:0.8em;color:#ff9800;"></div>
         </div>
         <button id="collect-all" onclick="collectAllIncome()">СОБРАТЬ ВСЁ</button>
+    </div>
+
+    <div class="combo-meter">
+        <div id="combo-fill" class="combo-fill" style="width:0%"></div>
     </div>
 
     <div id="tabs">
@@ -264,6 +327,7 @@
         <button class="tab-button" onclick="switchTab('business')">Бизнес</button>
         <button class="tab-button" onclick="switchTab('upgrades')">Улучшения</button>
         <button class="tab-button" onclick="switchTab('managers')">Менеджеры</button>
+        <button class="tab-button" onclick="switchTab('cars')">Гараж</button>
         <button class="tab-button" onclick="switchTab('boosts')">Бусты</button>
         <button class="tab-button" onclick="switchTab('achievements')">Достижения</button>
         <button class="tab-button" onclick="switchTab('leaderboard')">Топ</button>
@@ -274,9 +338,9 @@
         <div id="coin-container">
             <div id="coin" onclick="clickCoin()">КЛИКАЙ!</div>
             <p>За клик: <span id="coins-per-click">1</span>$</p>
-            <div id="version">Alpha 0.3</div>
+            <div id="version">Alpha 0.4</div>
         </div>
-        <button onclick="claimChannelBonus()" style="margin-top: 20px; width: 100%;">
+        <button onclick="claimChannelBonus()" style="margin-top:20px;width:100%;">
             🎁 Получить +100$ за подписку на канал
         </button>
     </div>
@@ -293,6 +357,16 @@
         <div id="managers-list"></div>
     </div>
 
+    <div id="cars-tab" class="tab-content">
+        <div id="garage-view">
+            <div>Текущая машина:</div>
+            <div id="current-car">🚶 Пешком</div>
+            <div id="car-name">Без транспорта</div>
+            <div id="car-speed">Скорость: 0 км/ч</div>
+        </div>
+        <div id="cars-list"></div>
+    </div>
+
     <div id="boosts-tab" class="tab-content">
         <div id="boosts-list"></div>
     </div>
@@ -303,7 +377,7 @@
 
     <div id="leaderboard-tab" class="tab-content">
         <div id="leaderboard-list"></div>
-        <button onclick="updateGlobalLeaderboard()" style="margin-top: 10px; width: 100%;">
+        <button onclick="updateGlobalLeaderboard()" style="margin-top:10px;width:100%;">
             🔄 Обновить таблицу лидеров
         </button>
     </div>
@@ -323,8 +397,8 @@
                 <div class="stat-label">Куплено бизнесов</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value" id="stat-total-managers">0</div>
-                <div class="stat-label">Нанято менеджеров</div>
+                <div class="stat-value" id="stat-total-cars">0</div>
+                <div class="stat-label">Куплено машин</div>
             </div>
             <div class="stat-item">
                 <div class="stat-value" id="stat-play-time">0</div>
@@ -338,7 +412,7 @@
     </div>
 
     <script>
-        // КОНФИГУРАЦИЯ ИГРЫ
+        // КОНФИГУРАЦИЯ ИГРЫ - Alpha 0.4
         const businessesConfig = [
             { name: "Лимонный киоск", baseCost: 15, baseIncome: 0.1, icon: "🍋" },
             { name: "Гаражный стартап", baseCost: 100, baseIncome: 1, icon: "💻" },
@@ -355,6 +429,18 @@
             { name: "CEO", businessIndex: 4, cost: 200000, description: "Автосбор для Tech Giant" },
         ];
 
+        // НОВОЕ В 0.4: КРУТЫЕ ТАЧКИ ДЛЯ ПОНТОВ! 🚗
+        const carsConfig = [
+            { name: "Велосипед", emoji: "🚲", cost: 5000, speed: 20, boost: 1.0, description: "Начни с малого" },
+            { name: "Мотоцикл", emoji: "🏍️", cost: 25000, speed: 120, boost: 1.1, description: "Уже стильно" },
+            { name: "Седан", emoji: "🚗", cost: 100000, speed: 180, boost: 1.2, description: "Для бизнеса" },
+            { name: "Спорткар", emoji: "🏎️", cost: 500000, speed: 320, boost: 1.5, description: "Скорость!" },
+            { name: "Ламборджини", emoji: "💎", cost: 2000000, speed: 350, boost: 2.0, description: "Роскошь" },
+            { name: "Хеликоптер", emoji: "🚁", cost: 5000000, speed: 280, boost: 2.5, description: "Над пробками" },
+            { name: "Частный самолет", emoji: "✈️", cost: 20000000, speed: 900, boost: 3.0, description: "Между континентами" },
+            { name: "Ракета", emoji: "🚀", cost: 100000000, speed: 28000, boost: 5.0, description: "Космический уровень" }
+        ];
+
         const boostsConfig = [
             { name: "Золотая лихорадка", cost: 500, duration: 30, description: "2x доход от бизнеса", effect: (game) => { game.boostMultiplier = 2; } },
             { name: "Суперклик", cost: 300, duration: 15, description: "10x доход за клик", effect: (game) => { game.clickBoostMultiplier = 10; } },
@@ -365,19 +451,27 @@
             { id: "first_million", name: "Первый миллион", description: "Заработать 1,000,000$", goal: 1000000, reward: 50000 },
             { id: "click_master", name: "Мастер клика", description: "Сделать 1000 кликов", goal: 1000, reward: 1000 },
             { id: "business_tycoon", name: "Бизнес-магнат", description: "Купить 50 бизнесов", goal: 50, reward: 5000 },
-            { id: "manager_pro", name: "Профи менеджмента", description: "Нанять всех менеджеров", goal: managersConfig.length, reward: 25000 }
+            { id: "manager_pro", name: "Профи менеджмента", description: "Нанять всех менеджеров", goal: managersConfig.length, reward: 25000 },
+            { id: "car_collector", name: "Коллекционер", description: "Купить 3 машины", goal: 3, reward: 10000 },
+            { id: "speed_demon", name: "Гонщик", description: "Разогнаться до 300+ км/ч", goal: 300, reward: 15000 }
         ];
 
-        // СОСТОЯНИЕ ИГРЫ
+        // СОСТОЯНИЕ ИГРЫ - Alpha 0.4
         let gameState = {
             money: 100,
             coinsPerClick: 1,
             totalEarned: 0,
             totalClicks: 0,
             totalBusinesses: 0,
+            totalCars: 0,
             playTime: 0,
             lastSaveTime: Date.now(),
             lastUpdateTime: Date.now(),
+            lastClickTime: 0,
+            combo: 0,
+            comboMultiplier: 1,
+            comboTimeout: null,
+            
             businesses: businessesConfig.map(biz => ({
                 ...biz,
                 level: 0,
@@ -385,21 +479,32 @@
                 cost: biz.baseCost,
                 accumulatedIncome: 0
             })),
+            
             managers: managersConfig.map(manager => ({
                 ...manager,
                 owned: false
             })),
+            
+            // НОВОЕ: СИСТЕМА МАШИН
+            cars: carsConfig.map(car => ({
+                ...car,
+                owned: false
+            })),
+            currentCar: null,
+            
             boosts: boostsConfig.map(boost => ({
                 ...boost,
                 active: false,
                 timeLeft: 0
             })),
+            
             achievements: achievementsConfig.map(ach => ({
                 ...ach,
                 progress: 0,
                 completed: false,
                 claimed: false
             })),
+            
             boostMultiplier: 1,
             clickBoostMultiplier: 1,
             growthBoost: false,
@@ -421,6 +526,50 @@
             startGameLoop();
             calculateOfflineEarnings();
             loadGlobalLeaderboard();
+        }
+
+        // НОВОЕ В 0.4: СИСТЕМА КОМБО
+        function updateCombo() {
+            const now = Date.now();
+            const timeDiff = now - gameState.lastClickTime;
+            
+            if (timeDiff < 300) { // Клики быстрее 300ms = комбо
+                gameState.combo++;
+                gameState.comboMultiplier = 1 + (gameState.combo * 0.1);
+                
+                // Ограничиваем комбо множитель до 5x
+                if (gameState.comboMultiplier > 5) {
+                    gameState.comboMultiplier = 5;
+                }
+            } else {
+                gameState.combo = 1;
+                gameState.comboMultiplier = 1;
+            }
+            
+            gameState.lastClickTime = now;
+            
+            // Сбрасываем комбо через 1 секунду бездействия
+            clearTimeout(gameState.comboTimeout);
+            gameState.comboTimeout = setTimeout(() => {
+                gameState.combo = 0;
+                gameState.comboMultiplier = 1;
+                updateUI();
+            }, 1000);
+        }
+
+        // НОВОЕ В 0.4: АНИМАЦИИ ЧАСТИЦ
+        function createCoinParticles(x, y) {
+            for (let i = 0; i < 5; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'coin-particle';
+                particle.style.setProperty('--tx', `${(Math.random() - 0.5) * 100}px`);
+                particle.style.setProperty('--ty', `${-Math.random() * 100 - 50}px`);
+                particle.style.left = `${x}px`;
+                particle.style.top = `${y}px`;
+                document.getElementById('coin-container').appendChild(particle);
+                
+                setTimeout(() => particle.remove(), 1000);
+            }
         }
 
         // ИГРОВОЙ ЦИКЛ
@@ -445,6 +594,11 @@
             gameState.businesses.forEach(business => {
                 if (business.level > 0) {
                     let income = business.income * gameState.boostMultiplier;
+                    
+                    // НОВОЕ: БОНУС ОТ ТЕКУЩЕЙ МАШИНЫ
+                    if (gameState.currentCar) {
+                        income *= gameState.currentCar.boost;
+                    }
                     
                     if (gameState.growthBoost) {
                         income *= (1 + gameState.growthBoostProgress * 0.05);
@@ -494,6 +648,12 @@
                         case "manager_pro":
                             progress = gameState.managers.filter(m => m.owned).length;
                             break;
+                        case "car_collector":
+                            progress = gameState.cars.filter(c => c.owned).length;
+                            break;
+                        case "speed_demon":
+                            progress = gameState.currentCar ? gameState.currentCar.speed : 0;
+                            break;
                     }
                     
                     achievement.progress = Math.min(progress, achievement.goal);
@@ -509,15 +669,25 @@
             document.getElementById('stat-total-earned').textContent = Math.floor(gameState.totalEarned).toLocaleString();
             document.getElementById('stat-total-clicks').textContent = gameState.totalClicks.toLocaleString();
             document.getElementById('stat-total-businesses').textContent = gameState.totalBusinesses;
-            document.getElementById('stat-total-managers').textContent = gameState.managers.filter(m => m.owned).length;
+            document.getElementById('stat-total-cars').textContent = gameState.cars.filter(c => c.owned).length;
             document.getElementById('stat-play-time').textContent = gameState.playTime.toFixed(1);
             document.getElementById('stat-achievements').textContent = 
                 `${gameState.achievements.filter(a => a.completed).length}/${gameState.achievements.length}`;
         }
 
         // ОСНОВНЫЕ ДЕЙСТВИЯ
-        function clickCoin() {
-            const clickValue = gameState.coinsPerClick * gameState.clickBoostMultiplier;
+        function clickCoin(event) {
+            // НОВОЕ: АНИМАЦИИ И КОМБО
+            if (event) {
+                const rect = document.getElementById('coin').getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                createCoinParticles(x, y);
+            }
+            
+            updateCombo();
+            
+            const clickValue = gameState.coinsPerClick * gameState.clickBoostMultiplier * gameState.comboMultiplier;
             gameState.money += clickValue;
             gameState.totalEarned += clickValue;
             gameState.totalClicks++;
@@ -587,6 +757,43 @@
             }
         }
 
+        // НОВОЕ В 0.4: ПОКУПКА МАШИН
+        function buyCar(index) {
+            const car = gameState.cars[index];
+            if (!car.owned && gameState.money >= car.cost) {
+                gameState.money -= car.cost;
+                car.owned = true;
+                gameState.currentCar = car;
+                gameState.totalCars++;
+                
+                showNotification(`🎉 Куплена ${car.emoji} ${car.name}!`);
+                updateUI();
+                renderCars();
+                updateGarageView();
+            }
+        }
+
+        function selectCar(index) {
+            const car = gameState.cars[index];
+            if (car.owned) {
+                gameState.currentCar = car;
+                showNotification(`Выбрана ${car.emoji} ${car.name}`);
+                updateGarageView();
+            }
+        }
+
+        function updateGarageView() {
+            if (gameState.currentCar) {
+                document.getElementById('current-car').textContent = gameState.currentCar.emoji;
+                document.getElementById('car-name').textContent = gameState.currentCar.name;
+                document.getElementById('car-speed').textContent = `Скорость: ${gameState.currentCar.speed} км/ч`;
+            } else {
+                document.getElementById('current-car').textContent = "🚶";
+                document.getElementById('car-name').textContent = "Пешком";
+                document.getElementById('car-speed').textContent = "Скорость: 5 км/ч";
+            }
+        }
+
         function activateBoost(index) {
             const boost = gameState.boosts[index];
             if (!boost.active && gameState.money >= boost.cost) {
@@ -612,7 +819,6 @@
 
         function claimChannelBonus() {
             if (!gameState.channelBonusClaimed) {
-                // ЗАМЕНИ НА СВОЙ РЕАЛЬНЫЙ КАНАЛ!
                 tg.openTelegramLink('https://t.me/hammer_head_channel');
                 gameState.money += 100;
                 gameState.channelBonusClaimed = true;
@@ -692,6 +898,7 @@
             renderBusinesses();
             renderUpgrades();
             renderManagers();
+            renderCars();
             renderBoosts();
             renderAchievements();
         }
@@ -777,6 +984,50 @@
                 `;
                 managerElement.disabled = manager.owned || gameState.money < manager.cost;
                 container.appendChild(managerElement);
+            });
+        }
+
+        // НОВОЕ В 0.4: РЕНДЕР МАШИН
+        function renderCars() {
+            const container = document.getElementById('cars-list');
+            container.innerHTML = '';
+            
+            gameState.cars.forEach((car, index) => {
+                const carElement = document.createElement('button');
+                carElement.className = 'car-item';
+                
+                if (car.owned) {
+                    carElement.onclick = () => selectCar(index);
+                    carElement.innerHTML = `
+                        <div class="car-header">
+                            <span class="car-name">${car.emoji} ${car.name}</span>
+                            <span class="car-owned">✔ Куплена</span>
+                        </div>
+                        <div class="car-stats">
+                            <span class="car-stat">Скорость: ${car.speed} км/ч</span>
+                            <span class="car-stat">Бонус: ${car.boost}x</span>
+                        </div>
+                        <div>${car.description}</div>
+                        ${gameState.currentCar === car ? '<div style="color:#4caf50;margin-top:5px;">▶ Выбрана</div>' : 
+                          '<div style="color:#ff9800;margin-top:5px;">🎯 Выбрать</div>'}
+                    `;
+                } else {
+                    carElement.onclick = () => buyCar(index);
+                    carElement.innerHTML = `
+                        <div class="car-header">
+                            <span class="car-name">${car.emoji} ${car.name}</span>
+                            <span class="car-cost">$${car.cost.toLocaleString()}</span>
+                        </div>
+                        <div class="car-stats">
+                            <span class="car-stat">Скорость: ${car.speed} км/ч</span>
+                            <span class="car-stat">Бонус: ${car.boost}x</span>
+                        </div>
+                        <div>${car.description}</div>
+                    `;
+                    carElement.disabled = gameState.money < car.cost;
+                }
+                
+                container.appendChild(carElement);
             });
         }
 
@@ -892,6 +1143,14 @@
             document.getElementById('income-per-sec').textContent = `+$${totalIncome.toFixed(1)}/сек`;
             document.getElementById('coins-per-click').textContent = gameState.coinsPerClick;
 
+            // НОВОЕ: ОБНОВЛЕНИЕ КОМБО
+            document.getElementById('combo-fill').style.width = `${(gameState.comboMultiplier - 1) * 25}%`;
+            if (gameState.combo > 1) {
+                document.getElementById('combo-text').textContent = `Комбо x${gameState.comboMultiplier.toFixed(1)}!`;
+            } else {
+                document.getElementById('combo-text').textContent = '';
+            }
+
             renderAllSections();
         }
 
@@ -919,6 +1178,14 @@
                 if (save) {
                     Object.assign(gameState, save);
                     gameState.lastUpdateTime = Date.now();
+                    
+                    // Восстанавливаем текущую машину из сохранения
+                    if (gameState.currentCar && typeof gameState.currentCar === 'object') {
+                        const carIndex = gameState.cars.findIndex(c => c.name === gameState.currentCar.name);
+                        if (carIndex !== -1) {
+                            gameState.currentCar = gameState.cars[carIndex];
+                        }
+                    }
                 }
             } catch (error) {
                 console.log('Нет сохраненной игры, начинаем новую');
